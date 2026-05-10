@@ -9,11 +9,13 @@
   "scripts": {
     "cli": "tsx src/cli.ts",
     "import": "tsx src/cli.ts",
+    "test": "vitest run",
     "build": "tsc"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
   }
 }

@@ -81,6 +81,14 @@ npm run import -- --csv samples/korona-export-example.csv --map samples/korona-m
 
 If `--manifest` is omitted, the manifest is written to `output/run-manifest.json` after a successful import.
 
+To write a Markdown summary report to a custom path, add `--summary`:
+
+```bash
+npm run import -- --csv samples/korona-export-example.csv --map samples/korona-mapping.json --out output/normalized.csv --warnings output/warnings.csv --manifest output/run-manifest.json --summary output/summary.md
+```
+
+If `--summary` is omitted, the summary is written to `output/summary.md`.
+
 To set a specific run ID in the manifest, add `--run-id`:
 
 ```bash
@@ -93,7 +101,7 @@ To write each successful import into a run-specific directory, add `--run-dir`:
 npm run import -- --csv samples/korona-export-example.csv --map samples/korona-mapping.json --run-dir output/runs
 ```
 
-With `--run-dir`, outputs are written under `<run-dir>/<run_id>/` as `normalized.csv`, `warnings.csv`, and `run-manifest.json`. It takes precedence over explicit `--out`, `--warnings`, and `--manifest` paths.
+With `--run-dir`, outputs are written under `<run-dir>/<run_id>/` as `normalized.csv`, `warnings.csv`, `summary.md`, and `run-manifest.json`. It takes precedence over explicit `--out`, `--warnings`, `--summary`, and `--manifest` paths.
 
 When `--run-dir` is used, the CLI also appends a summary entry to `<run-dir>/index.json` for file-based run history.
 
@@ -119,6 +127,12 @@ The CLI validates that every source header in `mapping.fields` exists in the inp
 The sample `samples/korona-mapping-bad-header.json` intentionally maps `Item Nam` instead of `Item Name` to show this failure case.
 
 When `quantity` and `total_cost` are present, the CLI adds `unit_cost` to the normalized CSV. Common currency and accounting number formats are supported, including `$400.00`, `1,250.00`, and `($42.00)`.
+
+## Run Tests
+
+```bash
+npm test
+```
 
 ## Future Paid Features
 

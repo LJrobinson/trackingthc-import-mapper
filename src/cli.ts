@@ -9,6 +9,7 @@ type CliArgs = {
   out?: string;
   warnings?: string;
   manifest?: string;
+  summary?: string;
   runId?: string;
   runDir?: string;
 };
@@ -52,6 +53,7 @@ type OutputPaths = {
   out: string;
   warnings: string;
   manifest: string;
+  summary: string;
 };
 
 type RunCounts = {
@@ -69,6 +71,7 @@ type RunIndexEntry = {
   warnings: number;
   ran_at: string;
   manifest_file: string;
+  summary_file: string;
 };
 
 async function main(): Promise<void> {
@@ -115,6 +118,15 @@ async function main(): Promise<void> {
   });
   await writeFile(outputPaths.warnings, toWarningsCsv(warnings), "utf8");
 
+  await mkdir(path.dirname(path.resolve(outputPaths.summary)), {
+    recursive: true,
+  });
+  await writeFile(
+    outputPaths.summary,
+    toSummaryMarkdown(outputPaths, mapping, counts, runInfo, warnings),
+    "utf8",
+  );
+
   await writeRunManifest(
     args,
     outputPaths,
@@ -132,6 +144,7 @@ async function main(): Promise<void> {
   console.log(`Unit costs calculated: ${unitCostsCalculated}`);
   console.log(`Warnings: ${warnings.length}`);
   console.log(`Warnings written: ${outputPaths.warnings}`);
+  console.log(`Summary written: ${outputPaths.summary}`);
   console.log(`Manifest written: ${outputPaths.manifest}`);
   if (runIndexPath) {
     console.log(`Run index updated: ${runIndexPath}`);
@@ -159,6 +172,8 @@ function parseArgs(argv: string[]): CliArgs {
       values.warnings = value;
     } else if (flag === "--manifest") {
       values.manifest = value;
+    } else if (flag === "--summary") {
+      values.summary = value;
     } else if (flag === "--run-id") {
       values.runId = value;
     } else if (flag === "--run-dir") {
@@ -181,6 +196,7 @@ function parseArgs(argv: string[]): CliArgs {
     out: values.out,
     warnings: values.warnings,
     manifest: values.manifest,
+    summary: values.summary,
     runId: values.runId,
     runDir: values.runDir,
   };
@@ -188,7 +204,7 @@ function parseArgs(argv: string[]): CliArgs {
 
 function usage(): never {
   throw new Error(
-    "Usage: trackingthc-import --csv <path> --map <path> (--out <path> | --run-dir <path>) [--warnings <path>] [--manifest <path>] [--run-id <value>]",
+    "Usage: trackingthc-import --csv <path> --map <path> (--out <path> | --run-dir <path>) [--warnings <path>] [--manifest <path>] [--summary <path>] [--run-id <value>]",
   );
 }
 
@@ -505,6 +521,69 @@ function toWarningsCsv(warnings: WarningRow[]): string {
   ]);
 }
 
+function toSummaryMarkdown(
+  outputPaths: OutputPaths,
+  mapping: MappingFile,
+  counts: RunCounts,
+  runInfo: RunInfo,
+  warnings: WarningRow[],
+): string {
+  return [
+    "# TrackingTHC Import Summary",
+    "",
+    `Run ID: ${runInfo.runId}`,
+    "Status: success",
+    `Source System: ${mapping.source_system ?? ""}`,
+    `Rows Processed: ${counts.rowsProcessed}`,
+    `Unit Costs Calculated: ${counts.unitCostsCalculated}`,
+    `Warnings: ${counts.warnings}`,
+    `Ran At: ${runInfo.ranAt}`,
+    "",
+    "## Files",
+    "",
+    `- Normalized Output: ${outputPaths.out}`,
+    `- Warnings: ${outputPaths.warnings}`,
+    `- Manifest: ${outputPaths.manifest}`,
+    "",
+    "## Warning Summary",
+    "",
+    toWarningSummaryMarkdown(warnings),
+    "",
+    "## Finance Review Notes",
+    "",
+    getFinanceReviewNote(counts.warnings),
+    "",
+  ].join("\n");
+}
+
+function toWarningSummaryMarkdown(warnings: WarningRow[]): string {
+  if (warnings.length === 0) {
+    return "No warnings found.";
+  }
+
+  const counts = new Map<WarningCode, number>();
+
+  for (const item of warnings) {
+    counts.set(item.code, (counts.get(item.code) ?? 0) + 1);
+  }
+
+  return [
+    "| warning_code | count |",
+    "| --- | --- |",
+    ...Array.from(counts.entries()).map(
+      ([warningCode, count]) => `| ${warningCode} | ${count} |`,
+    ),
+  ].join("\n");
+}
+
+function getFinanceReviewNote(warnings: number): string {
+  if (warnings > 0) {
+    return `This import completed successfully, but ${warnings} warning(s) require review before the output should be treated as fully trusted.`;
+  }
+
+  return "This import completed successfully with no warnings.";
+}
+
 function createRunInfo(
   sourceSystem: string | undefined,
   providedRunId: string | undefined,
@@ -542,6 +621,7 @@ function resolveOutputPaths(args: CliArgs, runId: string): OutputPaths {
       out: path.join(runPath, "normalized.csv"),
       warnings: path.join(runPath, "warnings.csv"),
       manifest: path.join(runPath, "run-manifest.json"),
+      summary: path.join(runPath, "summary.md"),
     };
   }
 
@@ -553,6 +633,7 @@ function resolveOutputPaths(args: CliArgs, runId: string): OutputPaths {
     out: args.out,
     warnings: args.warnings ?? "output/warnings.csv",
     manifest: args.manifest ?? "output/run-manifest.json",
+    summary: args.summary ?? "output/summary.md",
   };
 }
 
@@ -571,6 +652,7 @@ async function writeRunManifest(
     mapping_file: args.map,
     output_file: outputPaths.out,
     warnings_file: outputPaths.warnings,
+    summary_file: outputPaths.summary,
     rows_processed: counts.rowsProcessed,
     unit_costs_calculated: counts.unitCostsCalculated,
     warnings: counts.warnings,
@@ -605,6 +687,7 @@ async function updateRunIndex(
     warnings: counts.warnings,
     ran_at: runInfo.ranAt,
     manifest_file: outputPaths.manifest,
+    summary_file: outputPaths.summary,
   };
 
   await writeFile(

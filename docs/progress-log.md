@@ -387,3 +387,53 @@ Product insight:
 
 index.json creates a lightweight saved-runs system without a database. This is the first practical import history layer for TrackingTHC.
 
+## v0.9 - Markdown Summary Report
+
+Status: Working
+
+Added a human-readable Markdown summary report for each successful import.
+
+The CLI now writes:
+
+- normalized CSV
+- warnings CSV
+- summary.md
+- run-manifest.json
+- run index entry when --run-dir is used
+
+Validated command:
+
+npm run import -- --csv samples/korona-export-money-example.csv --map samples/korona-mapping.json --run-dir output/runs --run-id summary-test-001
+
+Result:
+
+Run ID: summary-test-001
+Rows processed: 4
+Output written: output\runs\summary-test-001\normalized.csv
+Unit costs calculated: 3
+Warnings: 2
+Warnings written: output\runs\summary-test-001\warnings.csv
+Summary written: output\runs\summary-test-001\summary.md
+Manifest written: output\runs\summary-test-001\run-manifest.json
+Run index updated: output\runs\index.json
+
+Validated summary:
+
+- includes run ID
+- includes status
+- includes source system
+- includes rows processed
+- includes unit costs calculated
+- includes warning count
+- includes output file paths
+- includes warning summary table
+- includes finance review notes
+
+Finance review note for warned imports:
+
+This import completed successfully, but 2 warning(s) require review before the output should be treated as fully trusted.
+
+Product insight:
+
+summary.md is the first finance-readable stakeholder artifact. It explains the import outcome and trust boundary without requiring the user to inspect raw CSV or JSON files.
+
