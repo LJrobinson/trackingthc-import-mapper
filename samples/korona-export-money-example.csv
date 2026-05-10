@@ -1,0 +1,5 @@
+Item Name,Package ID,Qty On Hand,Total Cost,Vendor
+Blue Dream 3.5g,1A406030000123,20,$400.00,Some Vendor
+Gelato Pre-Roll,1A406030000456,50,"1,250.00",Another Vendor
+Return Adjustment,1A406030000777,1,($42.00),Some Vendor
+Bad Cost Example,1A406030000888,10,N/A,Vendor Goblin

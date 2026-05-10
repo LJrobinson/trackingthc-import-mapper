@@ -1,0 +1,10 @@
+{
+  "source_system": "korona",
+  "fields": {
+    "Item Name": "product_name",
+    "Package ID": "package_id",
+    "Qty On Hand": "quantity",
+    "Total Cost": "total_cost",
+    "Vendor": "vendor"
+  }
+}

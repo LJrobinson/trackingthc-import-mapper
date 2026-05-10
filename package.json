@@ -1,0 +1,19 @@
+{
+  "name": "trackingthc-import-mapper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "trackingthc-import": "./dist/cli.js"
+  },
+  "scripts": {
+    "cli": "tsx src/cli.ts",
+    "import": "tsx src/cli.ts",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
