@@ -497,3 +497,50 @@ The import mapper now preserves its practical file-based workflow while exposing
 Next target:
 
 v1.2 - Optional MOBY JSON sidecar export.
+
+
+## v1.2 - Optional MOBY JSON Sidecar Export
+
+Status: Working
+
+Added an optional MOBY JSON sidecar export.
+
+The CLI now supports:
+
+--moby-json <path>
+
+When omitted, existing CLI behavior is unchanged and no MOBY JSON file is written.
+
+When provided after a successful import, the CLI writes a portable MOBY-compatible JSON artifact containing:
+
+- mappingProfile
+- importRun
+- validationIssues
+
+The MOBY JSON sidecar is built from the bridge layer:
+
+- toMobyMappingProfile(...)
+- toMobyImportRun(...)
+- toMobyValidationIssue(...)
+- createMobyImportSummary(...)
+
+Validated command:
+
+npm run import -- --csv samples/korona-export-money-example.csv --map samples/korona-mapping.json --run-dir output/runs --run-id moby-sidecar-test-001 --moby-json output/runs/moby-sidecar-test-001/moby-import.json
+
+Expected output includes:
+
+MOBY JSON written: output/runs/moby-sidecar-test-001/moby-import.json
+
+Validated result:
+
+Test Files  6 passed (6)
+Tests       28 passed (28)
+
+Product insight:
+
+The import mapper now remains a practical file-based CLI while also emitting a portable MOBY contract artifact. This allows future TrackingTHC apps to ingest import results without needing to understand the CLI’s internal file formats.
+
+Next target:
+
+v1.3 - Normalized rows to InventoryPackage bridge.
