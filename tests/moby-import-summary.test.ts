@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ImportRun, MappingProfile, ValidationIssue } from "moby-core";
+import type {
+  ImportRun,
+  InventoryPackage,
+  MappingProfile,
+  ValidationIssue,
+} from "moby-core";
 import { createMobyImportSummary } from "../src/moby-import-summary.js";
 
 const mappingProfile: MappingProfile = {
@@ -41,6 +46,13 @@ const validationIssues: ValidationIssue[] = [
   },
 ];
 
+const packages: InventoryPackage[] = [
+  {
+    id: "package_1A406030000123",
+    label: "1A406030000123",
+  },
+];
+
 describe("MOBY import summary helper", () => {
   it("returns the provided mappingProfile", () => {
     const summary = createMobyImportSummary({
@@ -70,6 +82,27 @@ describe("MOBY import summary helper", () => {
     });
 
     expect(summary.validationIssues).toBe(validationIssues);
+  });
+
+  it("returns the provided packages when supplied", () => {
+    const summary = createMobyImportSummary({
+      mappingProfile,
+      importRun,
+      validationIssues,
+      packages,
+    });
+
+    expect(summary.packages).toBe(packages);
+  });
+
+  it("omits packages when they are not supplied", () => {
+    const summary = createMobyImportSummary({
+      mappingProfile,
+      importRun,
+      validationIssues,
+    });
+
+    expect(summary.packages).toBeUndefined();
   });
 
   it("does not clone or mutate the inputs", () => {

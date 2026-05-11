@@ -4,6 +4,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ExternalSystem, ValidationIssue } from "moby-core";
 import { createMobyImportSummary } from "./moby-import-summary.js";
+import {
+  toMobyInventoryPackage,
+  type NormalizedPackageRow,
+} from "./moby-inventory-package.js";
 import { toMobyImportRun, type MapperRunManifest } from "./moby-import-run.js";
 import { toMobyMappingProfile } from "./moby-mapping-profile.js";
 import { toMobyValidationIssue } from "./moby-validation-issue.js";
@@ -28,6 +32,8 @@ type MappingFile = {
 };
 
 type NormalizedRow = {
+  rowNumber: number;
+  normalized: Record<string, string>;
   values: string[];
   unitCostCalculated: boolean;
   warnings: WarningRow[];
@@ -150,7 +156,15 @@ async function main(): Promise<void> {
     ? await updateRunIndex(args.runDir, outputPaths, mapping, counts, runInfo)
     : undefined;
   const mobyJsonPath = args.mobyJson
-    ? await writeMobyJson(args, outputPaths, mapping, counts, runInfo, warnings)
+    ? await writeMobyJson(
+        args,
+        outputPaths,
+        mapping,
+        counts,
+        runInfo,
+        normalizedRows,
+        warnings,
+      )
     : undefined;
 
   console.log(`Run ID: ${runInfo.runId}`);
@@ -308,6 +322,8 @@ function normalizeRow(
   }
 
   return {
+    rowNumber,
+    normalized,
     values: outputHeaders.map((header) => normalized[header] ?? ""),
     unitCostCalculated,
     warnings: getWarnings(rowNumber, normalized, unitCostCalculated),
@@ -696,6 +712,7 @@ async function writeMobyJson(
   mapping: MappingFile,
   counts: RunCounts,
   runInfo: RunInfo,
+  normalizedRows: NormalizedRow[],
   warnings: WarningRow[],
 ): Promise<string> {
   const mobyJson = args.mobyJson;
@@ -731,6 +748,14 @@ async function writeMobyJson(
     mappingProfile,
     importRun: toMobyImportRun(manifest),
     validationIssues: warnings.map(toMobyValidationIssue),
+    packages: normalizedRows.map((row) =>
+      toMobyInventoryPackage({
+        row: toNormalizedPackageRow(row.normalized),
+        rowNumber: row.rowNumber,
+        sourceFile: args.csv,
+        sourceSystem,
+      }),
+    ),
   });
 
   await mkdir(path.dirname(path.resolve(mobyJson)), {
@@ -739,6 +764,19 @@ async function writeMobyJson(
   await writeFile(mobyJson, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
 
   return mobyJson;
+}
+
+function toNormalizedPackageRow(
+  normalized: Record<string, string>,
+): NormalizedPackageRow {
+  return {
+    product_name: normalized.product_name,
+    package_id: normalized.package_id,
+    quantity: normalized.quantity,
+    total_cost: normalized.total_cost,
+    unit_cost: normalized.unit_cost,
+    vendor: normalized.vendor,
+  };
 }
 
 async function updateRunIndex(

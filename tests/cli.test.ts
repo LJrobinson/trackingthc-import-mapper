@@ -20,6 +20,64 @@ type CliResult = {
   stderr: string;
 };
 
+type MobyJsonSidecar = {
+  mappingProfile: {
+    id: string;
+    name: string;
+    source: string;
+    createdAt: string;
+    mappings: Array<{
+      sourceField: string;
+      canonicalField?: string;
+      status: string;
+    }>;
+  };
+  importRun: {
+    id: string;
+    source: string;
+    status: string;
+    filename: string;
+    startedAt: string;
+    completedAt: string;
+    summary: {
+      rowCount: number;
+      successCount: number;
+      warningCount: number;
+      errorCount: number;
+    };
+  };
+  validationIssues: Array<{
+    code: string;
+    severity: string;
+    message: string;
+    field?: string;
+    rowNumber?: number;
+    metadata?: Record<string, unknown>;
+  }>;
+  packages?: Array<{
+    id: string;
+    label?: string;
+    quantity?: {
+      value: number;
+      unit: string;
+    };
+    totalCost?: {
+      amount: number;
+      currency: string;
+    };
+    unitCost?: {
+      amount: number;
+      currency: string;
+    };
+    metadata?: Record<string, unknown>;
+    externalReferences?: Array<{
+      system: string;
+      externalId: string;
+      label?: string;
+    }>;
+  }>;
+};
+
 const require = createRequire(import.meta.url);
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(testDir, "..");
@@ -152,41 +210,9 @@ describe("TrackingTHC Import Mapper CLI", () => {
     await expectFile(indexPath);
     await expectFile(mobyJsonPath);
 
-    const mobyJson = JSON.parse(await readFile(mobyJsonPath, "utf8")) as {
-      mappingProfile: {
-        id: string;
-        name: string;
-        source: string;
-        createdAt: string;
-        mappings: Array<{
-          sourceField: string;
-          canonicalField?: string;
-          status: string;
-        }>;
-      };
-      importRun: {
-        id: string;
-        source: string;
-        status: string;
-        filename: string;
-        startedAt: string;
-        completedAt: string;
-        summary: {
-          rowCount: number;
-          successCount: number;
-          warningCount: number;
-          errorCount: number;
-        };
-      };
-      validationIssues: Array<{
-        code: string;
-        severity: string;
-        message: string;
-        field?: string;
-        rowNumber?: number;
-        metadata?: Record<string, unknown>;
-      }>;
-    };
+    const mobyJson = JSON.parse(
+      await readFile(mobyJsonPath, "utf8"),
+    ) as MobyJsonSidecar;
 
     expect(mobyJson.mappingProfile).toMatchObject({
       id: "moby-run-mapping-profile",
@@ -236,6 +262,75 @@ describe("TrackingTHC Import Mapper CLI", () => {
         quantity: "20",
         totalCost: "400.00",
       },
+    });
+  });
+
+  it("includes InventoryPackage entities in the MOBY JSON sidecar", async () => {
+    const tempDir = await makeTempDir();
+    const runDir = path.join(tempDir, "runs");
+    const runId = "moby-packages-run";
+    const sourceFile = path.join(
+      projectRoot,
+      "tests",
+      "fixtures",
+      "clean-export.csv",
+    );
+    const mobyJsonPath = path.join(tempDir, "sidecars", "moby-packages.json");
+
+    const result = await runCli([
+      "--csv",
+      sourceFile,
+      "--map",
+      path.join(projectRoot, "samples", "korona-mapping.json"),
+      "--run-dir",
+      runDir,
+      "--run-id",
+      runId,
+      "--moby-json",
+      mobyJsonPath,
+    ]);
+
+    expect(result.code).toBe(0);
+    await expectFile(path.join(runDir, runId, "normalized.csv"));
+    await expectFile(path.join(runDir, runId, "warnings.csv"));
+    await expectFile(path.join(runDir, runId, "summary.md"));
+    await expectFile(path.join(runDir, runId, "run-manifest.json"));
+    await expectFile(path.join(runDir, "index.json"));
+    await expectFile(mobyJsonPath);
+
+    const mobyJson = JSON.parse(
+      await readFile(mobyJsonPath, "utf8"),
+    ) as MobyJsonSidecar;
+
+    expect(Array.isArray(mobyJson.packages)).toBe(true);
+    expect(mobyJson.packages?.[0]).toMatchObject({
+      id: "package_1A406030000123",
+      label: "1A406030000123",
+      quantity: {
+        value: 20,
+        unit: "each",
+      },
+      totalCost: {
+        amount: 400,
+        currency: "USD",
+      },
+      unitCost: {
+        amount: 20,
+        currency: "USD",
+      },
+      metadata: {
+        productName: "Blue Dream 3.5g",
+        vendorName: "Some Vendor",
+        rowNumber: 2,
+        sourceFile,
+      },
+      externalReferences: [
+        {
+          system: "korona",
+          externalId: `${sourceFile}:2`,
+          label: "Normalized row reference",
+        },
+      ],
     });
   });
 
