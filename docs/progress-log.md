@@ -578,6 +578,49 @@ Product insight:
 
 The import mapper can now translate normalized CSV rows into MOBY domain entities without changing the existing CLI output format. This is the first bridge from file-based import output into reusable inventory objects that future TrackingTHC reconciliation workflows can consume.
 
+## v1.4 - InventoryPackage Entities in MOBY JSON Sidecar
+
+Status: Working
+
+Extended the optional MOBY JSON sidecar export to include InventoryPackage entities converted from normalized import rows.
+
+The MOBY JSON sidecar now contains:
+
+- mappingProfile
+- importRun
+- validationIssues
+- packages
+
+Packages are built from normalized row data using the MOBY bridge adapter:
+
+toMobyInventoryPackage(...)
+
+Each package can include:
+
+- id
+- label
+- quantity
+- unitCost
+- totalCost
+- metadata with productName, vendorName, rowNumber, and sourceFile
+- externalReferences with a normalized row reference
+
+Default CLI behavior remains unchanged when --moby-json is omitted.
+
+Validated commands:
+
+npm run build
+npm test
+
+Validated result:
+
+Test Files  7 passed (7)
+Tests       45 passed (45)
+
+Product insight:
+
+The import mapper now emits a portable MOBY artifact containing both import metadata and reusable inventory package entities. This makes moby-import.json a practical ingestion payload for future TrackingTHC apps and reconciliation workflows.
+
 Next target:
 
-v1.4 - MOBY JSON package entities or reconciliation prep.
+v1.5 - Reconciliation prep or MOBY sidecar documentation.
