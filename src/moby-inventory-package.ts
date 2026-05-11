@@ -71,6 +71,37 @@ function parseFiniteNumber(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function parseMoneyValue(value: string | undefined): number | undefined {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const isAccountingNegative =
+    trimmed.startsWith("(") && trimmed.endsWith(")");
+  const unsignedText = isAccountingNegative
+    ? trimmed.slice(1, -1).trim()
+    : trimmed;
+  const cleaned = unsignedText.replace(/[$,]/g, "").trim();
+
+  if (!cleaned || cleaned === "-") {
+    return undefined;
+  }
+
+  if (!/^-?(?:\d+\.?\d*|\.\d+)$/.test(cleaned)) {
+    return undefined;
+  }
+
+  const parsed = Number(cleaned);
+
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+
+  return isAccountingNegative ? -Math.abs(parsed) : parsed;
+}
+
 function toQuantity(value: string | undefined): Quantity | undefined {
   const parsed = parseFiniteNumber(value);
 
@@ -85,7 +116,7 @@ function toQuantity(value: string | undefined): Quantity | undefined {
 }
 
 function toMoney(value: string | undefined): Money | undefined {
-  const parsed = parseFiniteNumber(value);
+  const parsed = parseMoneyValue(value);
 
   if (parsed === undefined) {
     return undefined;

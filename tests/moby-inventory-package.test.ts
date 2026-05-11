@@ -101,6 +101,29 @@ describe("moby InventoryPackage adapter", () => {
     });
   });
 
+  it("parses money-formatted totalCost values", () => {
+    const cases: Array<[string, number]> = [
+      ["$400.00", 400],
+      ["1,250.00", 1250],
+      [" $400.00 ", 400],
+      ["($42.00)", -42],
+      ["-42.00", -42],
+    ];
+
+    for (const [totalCost, amount] of cases) {
+      const pkg = toMobyInventoryPackage({
+        row: {
+          total_cost: totalCost,
+        },
+      });
+
+      expect(pkg.totalCost).toEqual({
+        amount,
+        currency: "USD",
+      });
+    }
+  });
+
   it("omits invalid numeric fields", () => {
     const pkg = toMobyInventoryPackage({
       row: {
@@ -113,6 +136,27 @@ describe("moby InventoryPackage adapter", () => {
     expect(pkg.quantity).toBeUndefined();
     expect(pkg.unitCost).toBeUndefined();
     expect(pkg.totalCost).toBeUndefined();
+  });
+
+  it("omits invalid money values without throwing", () => {
+    expect(() =>
+      toMobyInventoryPackage({
+        row: {
+          total_cost: "N/A",
+          unit_cost: "abc",
+        },
+      }),
+    ).not.toThrow();
+
+    const pkg = toMobyInventoryPackage({
+      row: {
+        total_cost: "N/A",
+        unit_cost: "abc",
+      },
+    });
+
+    expect(pkg.totalCost).toBeUndefined();
+    expect(pkg.unitCost).toBeUndefined();
   });
 
   it("omits empty and whitespace-only numeric fields", () => {

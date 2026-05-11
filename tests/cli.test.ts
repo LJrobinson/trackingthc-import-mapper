@@ -334,6 +334,75 @@ describe("TrackingTHC Import Mapper CLI", () => {
     });
   });
 
+  it("includes money-formatted totalCost values in the MOBY JSON sidecar", async () => {
+    const tempDir = await makeTempDir();
+    const runDir = path.join(tempDir, "runs");
+    const runId = "moby-money-packages-run";
+    const sourceFile = path.join(
+      projectRoot,
+      "samples",
+      "korona-export-money-example.csv",
+    );
+    const mobyJsonPath = path.join(
+      tempDir,
+      "sidecars",
+      "moby-money-packages.json",
+    );
+
+    const result = await runCli([
+      "--csv",
+      sourceFile,
+      "--map",
+      path.join(projectRoot, "samples", "korona-mapping.json"),
+      "--run-dir",
+      runDir,
+      "--run-id",
+      runId,
+      "--moby-json",
+      mobyJsonPath,
+    ]);
+
+    expect(result.code).toBe(0);
+    await expectFile(mobyJsonPath);
+
+    const mobyJson = JSON.parse(
+      await readFile(mobyJsonPath, "utf8"),
+    ) as MobyJsonSidecar;
+    const packages = mobyJson.packages ?? [];
+
+    expect(
+      packages.find((pkg) => pkg.label === "1A406030000123"),
+    ).toMatchObject({
+      totalCost: {
+        amount: 400,
+        currency: "USD",
+      },
+    });
+    expect(
+      packages.find((pkg) => pkg.label === "1A406030000456"),
+    ).toMatchObject({
+      totalCost: {
+        amount: 1250,
+        currency: "USD",
+      },
+    });
+    expect(
+      packages.find((pkg) => pkg.label === "1A406030000777"),
+    ).toMatchObject({
+      totalCost: {
+        amount: -42,
+        currency: "USD",
+      },
+    });
+
+    const badCostPackage = packages.find(
+      (pkg) => pkg.label === "1A406030000888",
+    );
+
+    expect(badCostPackage).toBeDefined();
+    expect(badCostPackage?.totalCost).toBeUndefined();
+  });
+
   it("fails fast for a bad mapping without creating run outputs", async () => {
     const tempDir = await makeTempDir();
     const runDir = path.join(tempDir, "runs");
