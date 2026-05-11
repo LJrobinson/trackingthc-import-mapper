@@ -437,3 +437,27 @@ Product insight:
 
 summary.md is the first finance-readable stakeholder artifact. It explains the import outcome and trust boundary without requiring the user to inspect raw CSV or JSON files.
 
+## v1.0 - Core Lock Tests
+
+Status: Working
+
+Added Vitest test coverage for the core CLI workflows.
+
+Validated test command:
+
+npm test
+
+Result:
+
+Test Files  1 passed (1)
+Tests       3 passed (3)
+
+Covered workflows:
+
+- clean import writes run-dir outputs
+- money-format import calculates valid unit costs and reports warning totals
+- bad mapping fails fast without creating run outputs
+
+Product insight:
+
+The core import mapper behavior is now protected by automated tests. Future changes can be checked against the current working prototype behavior.
