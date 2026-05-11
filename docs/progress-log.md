@@ -494,11 +494,6 @@ Product insight:
 
 The import mapper now preserves its practical file-based workflow while exposing a portable MOBY-compatible contract layer. This creates the first real cross-repo integration between trackingthc-import-mapper and moby-core without rewriting the working CLI.
 
-Next target:
-
-v1.2 - Optional MOBY JSON sidecar export.
-
-
 ## v1.2 - Optional MOBY JSON Sidecar Export
 
 Status: Working
@@ -541,6 +536,48 @@ Product insight:
 
 The import mapper now remains a practical file-based CLI while also emitting a portable MOBY contract artifact. This allows future TrackingTHC apps to ingest import results without needing to understand the CLI’s internal file formats.
 
+## v1.3 - Normalized Rows to InventoryPackage Bridge
+
+Status: Working
+
+Added a MOBY bridge adapter that converts normalized import rows into moby-core InventoryPackage objects.
+
+The adapter supports:
+
+- package_id -> id and label
+- quantity -> Quantity with unit each
+- total_cost -> USD totalCost
+- unit_cost -> USD unitCost
+- product_name -> metadata.productName
+- vendor -> metadata.vendorName
+
+ID fallback behavior:
+
+- package_id present -> package_<trimmed package_id>
+- package_id missing + rowNumber -> package_row_<rowNumber>
+- package_id missing + no rowNumber -> package_unidentified
+
+External reference behavior:
+
+- sourceSystem + sourceFile + rowNumber -> sourceFile:rowNumber
+- sourceSystem + rowNumber -> row:<rowNumber>
+- sourceSystem + sourceFile -> sourceFile
+- no sourceSystem -> no externalReferences
+
+Validated commands:
+
+npm run build
+npm test
+
+Validated result:
+
+Test Files  7 passed (7)
+Tests       42 passed (42)
+
+Product insight:
+
+The import mapper can now translate normalized CSV rows into MOBY domain entities without changing the existing CLI output format. This is the first bridge from file-based import output into reusable inventory objects that future TrackingTHC reconciliation workflows can consume.
+
 Next target:
 
-v1.3 - Normalized rows to InventoryPackage bridge.
+v1.4 - MOBY JSON package entities or reconciliation prep.
