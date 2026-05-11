@@ -21,6 +21,9 @@ type CliResult = {
 };
 
 type MobyJsonSidecar = {
+  schemaVersion: string;
+  generatedBy: string;
+  generatedAt: string;
   mappingProfile: {
     id: string;
     name: string;
@@ -213,7 +216,14 @@ describe("TrackingTHC Import Mapper CLI", () => {
     const mobyJson = JSON.parse(
       await readFile(mobyJsonPath, "utf8"),
     ) as MobyJsonSidecar;
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+      ran_at: string;
+    };
 
+    expect(mobyJson.schemaVersion).toBe("1.0");
+    expect(mobyJson.generatedBy).toBe("trackingthc-import-mapper");
+    expect(mobyJson.generatedAt).toBe(manifest.ran_at);
+    expect(mobyJson.generatedAt).toBe(mobyJson.importRun.startedAt);
     expect(mobyJson.mappingProfile).toMatchObject({
       id: "moby-run-mapping-profile",
       name: "korona import mapping",

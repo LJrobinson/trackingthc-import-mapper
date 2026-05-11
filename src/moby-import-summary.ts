@@ -6,6 +6,9 @@ import type {
 } from "moby-core";
 
 export interface MobyImportSummary {
+  schemaVersion: "1.0";
+  generatedBy: "trackingthc-import-mapper";
+  generatedAt: string;
   mappingProfile: MappingProfile;
   importRun: ImportRun;
   validationIssues: ValidationIssue[];
@@ -17,8 +20,12 @@ export function createMobyImportSummary(args: {
   importRun: ImportRun;
   validationIssues: ValidationIssue[];
   packages?: InventoryPackage[];
+  generatedAt?: string;
 }): MobyImportSummary {
   return {
+    schemaVersion: "1.0",
+    generatedBy: "trackingthc-import-mapper",
+    generatedAt: args.generatedAt ?? new Date().toISOString(),
     mappingProfile: args.mappingProfile,
     importRun: args.importRun,
     validationIssues: args.validationIssues,

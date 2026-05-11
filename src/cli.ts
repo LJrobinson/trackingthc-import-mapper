@@ -756,6 +756,7 @@ async function writeMobyJson(
         sourceSystem,
       }),
     ),
+    generatedAt: runInfo.ranAt,
   });
 
   await mkdir(path.dirname(path.resolve(mobyJson)), {

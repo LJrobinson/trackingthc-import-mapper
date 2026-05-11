@@ -36,6 +36,8 @@ const importRun: ImportRun = {
   },
 };
 
+const generatedAt = "2026-05-10T20:01:00.000Z";
+
 const validationIssues: ValidationIssue[] = [
   {
     code: "MISSING_PACKAGE_ID",
@@ -54,6 +56,30 @@ const packages: InventoryPackage[] = [
 ];
 
 describe("MOBY import summary helper", () => {
+  it("adds schema metadata with a provided generatedAt", () => {
+    const summary = createMobyImportSummary({
+      mappingProfile,
+      importRun,
+      validationIssues,
+      generatedAt,
+    });
+
+    expect(summary.schemaVersion).toBe("1.0");
+    expect(summary.generatedBy).toBe("trackingthc-import-mapper");
+    expect(summary.generatedAt).toBe(generatedAt);
+  });
+
+  it("adds generatedAt when omitted", () => {
+    const summary = createMobyImportSummary({
+      mappingProfile,
+      importRun,
+      validationIssues,
+    });
+
+    expect(summary.generatedAt).toEqual(expect.any(String));
+    expect(summary.generatedAt.length).toBeGreaterThan(0);
+  });
+
   it("returns the provided mappingProfile", () => {
     const summary = createMobyImportSummary({
       mappingProfile,
