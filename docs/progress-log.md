@@ -621,6 +621,40 @@ Product insight:
 
 The import mapper now emits a portable MOBY artifact containing both import metadata and reusable inventory package entities. This makes moby-import.json a practical ingestion payload for future TrackingTHC apps and reconciliation workflows.
 
+## v1.4.1 - Hardened MOBY Money Parsing
+
+Status: Working
+
+Fixed MOBY sidecar package cost parsing so InventoryPackage.totalCost is included when total_cost contains common POS/accounting money formats.
+
+Supported total_cost formats now include:
+
+- 400.00
+- $400.00
+- 1,250.00
+- " $400.00 "
+- ($42.00)
+- -42.00
+
+Invalid values are still omitted from InventoryPackage.totalCost and surfaced through validation issues instead of being coerced into misleading values.
+
+Validated behavior:
+
+- valid money-formatted total_cost values render as package.totalCost in moby-import.json
+- invalid total_cost values such as N/A omit totalCost
+- unitCost behavior remains intact
+- quantity parsing remains strict
+- the TrackingTHC Import Review Viewer now displays real generated package totals correctly
+
+Validated commands:
+
+npm run build
+npm test
+
+Product insight:
+
+The MOBY sidecar now preserves real-world cannabis POS/accounting money formats while still refusing invalid values. This keeps the import payload truthful: good cost data becomes structured InventoryPackage money, while bad cost data remains visibly unresolved for review.
+
 Next target:
 
-v1.5 - Reconciliation prep or MOBY sidecar documentation.
+v1.5 - Sidecar schema/version metadata.
