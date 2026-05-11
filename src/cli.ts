@@ -3,6 +3,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ExternalSystem, ValidationIssue } from "moby-core";
+import { createMobyImportSummary } from "./moby-import-summary.js";
+import { toMobyImportRun, type MapperRunManifest } from "./moby-import-run.js";
+import { toMobyMappingProfile } from "./moby-mapping-profile.js";
+import { toMobyValidationIssue } from "./moby-validation-issue.js";
 
 type CliArgs = {
   csv: string;
@@ -13,6 +17,7 @@ type CliArgs = {
   summary?: string;
   runId?: string;
   runDir?: string;
+  mobyJson?: string;
 };
 
 // This remains app-specific: mapper files use snake_case source_system and
@@ -144,6 +149,9 @@ async function main(): Promise<void> {
   const runIndexPath = args.runDir
     ? await updateRunIndex(args.runDir, outputPaths, mapping, counts, runInfo)
     : undefined;
+  const mobyJsonPath = args.mobyJson
+    ? await writeMobyJson(args, outputPaths, mapping, counts, runInfo, warnings)
+    : undefined;
 
   console.log(`Run ID: ${runInfo.runId}`);
   console.log(`Rows processed: ${normalizedRows.length}`);
@@ -155,6 +163,9 @@ async function main(): Promise<void> {
   console.log(`Manifest written: ${outputPaths.manifest}`);
   if (runIndexPath) {
     console.log(`Run index updated: ${runIndexPath}`);
+  }
+  if (mobyJsonPath) {
+    console.log(`MOBY JSON written: ${mobyJsonPath}`);
   }
 }
 
@@ -185,6 +196,8 @@ function parseArgs(argv: string[]): CliArgs {
       values.runId = value;
     } else if (flag === "--run-dir") {
       values.runDir = value;
+    } else if (flag === "--moby-json") {
+      values.mobyJson = value;
     } else {
       usage();
     }
@@ -206,12 +219,13 @@ function parseArgs(argv: string[]): CliArgs {
     summary: values.summary,
     runId: values.runId,
     runDir: values.runDir,
+    mobyJson: values.mobyJson,
   };
 }
 
 function usage(): never {
   throw new Error(
-    "Usage: trackingthc-import --csv <path> --map <path> (--out <path> | --run-dir <path>) [--warnings <path>] [--manifest <path>] [--summary <path>] [--run-id <value>]",
+    "Usage: trackingthc-import --csv <path> --map <path> (--out <path> | --run-dir <path>) [--warnings <path>] [--manifest <path>] [--summary <path>] [--run-id <value>] [--moby-json <path>]",
   );
 }
 
@@ -674,6 +688,57 @@ async function writeRunManifest(
     `${JSON.stringify(manifest, null, 2)}\n`,
     "utf8",
   );
+}
+
+async function writeMobyJson(
+  args: CliArgs,
+  outputPaths: OutputPaths,
+  mapping: MappingFile,
+  counts: RunCounts,
+  runInfo: RunInfo,
+  warnings: WarningRow[],
+): Promise<string> {
+  const mobyJson = args.mobyJson;
+
+  if (!mobyJson) {
+    usage();
+  }
+
+  const sourceSystem = mapping.source_system ?? "csv";
+  const mappingProfile = toMobyMappingProfile({
+    mapping: {
+      source_system: sourceSystem,
+      fields: mapping.fields,
+    },
+    id: `${runInfo.runId}-mapping-profile`,
+    name: `${sourceSystem} import mapping`,
+    createdAt: runInfo.ranAt,
+  });
+  const manifest: MapperRunManifest = {
+    run_id: runInfo.runId,
+    status: "success",
+    source_system: sourceSystem,
+    source_file: args.csv,
+    mapping_file: args.map,
+    output_file: outputPaths.out,
+    warnings_file: outputPaths.warnings,
+    rows_processed: counts.rowsProcessed,
+    unit_costs_calculated: counts.unitCostsCalculated,
+    warnings: counts.warnings,
+    ran_at: runInfo.ranAt,
+  };
+  const summary = createMobyImportSummary({
+    mappingProfile,
+    importRun: toMobyImportRun(manifest),
+    validationIssues: warnings.map(toMobyValidationIssue),
+  });
+
+  await mkdir(path.dirname(path.resolve(mobyJson)), {
+    recursive: true,
+  });
+  await writeFile(mobyJson, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+
+  return mobyJson;
 }
 
 async function updateRunIndex(

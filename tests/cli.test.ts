@@ -61,6 +61,7 @@ describe("TrackingTHC Import Mapper CLI", () => {
     const summaryPath = path.join(runPath, "summary.md");
     const manifestPath = path.join(runPath, "run-manifest.json");
     const indexPath = path.join(runDir, "index.json");
+    const mobyJsonPath = path.join(runPath, "moby.json");
 
     expect(result.code).toBe(0);
     await expectFile(normalizedPath);
@@ -68,6 +69,7 @@ describe("TrackingTHC Import Mapper CLI", () => {
     await expectFile(summaryPath);
     await expectFile(manifestPath);
     await expectFile(indexPath);
+    await expectMissing(mobyJsonPath);
 
     const normalized = await readFile(normalizedPath, "utf8");
     expect(normalized).toContain("20.00");
@@ -113,6 +115,128 @@ describe("TrackingTHC Import Mapper CLI", () => {
     expect(warnings).toContain("INVALID_TOTAL_COST");
     expect(warnings).toContain("UNIT_COST_NOT_CALCULATED");
     expect(summary).toContain("Warnings: 2");
+  });
+
+  it("writes a MOBY JSON sidecar when requested", async () => {
+    const tempDir = await makeTempDir();
+    const runDir = path.join(tempDir, "runs");
+    const runId = "moby-run";
+    const mobyJsonPath = path.join(tempDir, "sidecars", "moby.json");
+
+    const result = await runCli([
+      "--csv",
+      path.join(projectRoot, "samples", "korona-export-cursed-example.csv"),
+      "--map",
+      path.join(projectRoot, "samples", "korona-mapping.json"),
+      "--run-dir",
+      runDir,
+      "--run-id",
+      runId,
+      "--moby-json",
+      mobyJsonPath,
+    ]);
+
+    const runPath = path.join(runDir, runId);
+    const normalizedPath = path.join(runPath, "normalized.csv");
+    const warningsPath = path.join(runPath, "warnings.csv");
+    const summaryPath = path.join(runPath, "summary.md");
+    const manifestPath = path.join(runPath, "run-manifest.json");
+    const indexPath = path.join(runDir, "index.json");
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(`MOBY JSON written: ${mobyJsonPath}`);
+    await expectFile(normalizedPath);
+    await expectFile(warningsPath);
+    await expectFile(summaryPath);
+    await expectFile(manifestPath);
+    await expectFile(indexPath);
+    await expectFile(mobyJsonPath);
+
+    const mobyJson = JSON.parse(await readFile(mobyJsonPath, "utf8")) as {
+      mappingProfile: {
+        id: string;
+        name: string;
+        source: string;
+        createdAt: string;
+        mappings: Array<{
+          sourceField: string;
+          canonicalField?: string;
+          status: string;
+        }>;
+      };
+      importRun: {
+        id: string;
+        source: string;
+        status: string;
+        filename: string;
+        startedAt: string;
+        completedAt: string;
+        summary: {
+          rowCount: number;
+          successCount: number;
+          warningCount: number;
+          errorCount: number;
+        };
+      };
+      validationIssues: Array<{
+        code: string;
+        severity: string;
+        message: string;
+        field?: string;
+        rowNumber?: number;
+        metadata?: Record<string, unknown>;
+      }>;
+    };
+
+    expect(mobyJson.mappingProfile).toMatchObject({
+      id: "moby-run-mapping-profile",
+      name: "korona import mapping",
+      source: "korona",
+    });
+    expect(mobyJson.mappingProfile.createdAt).toBe(
+      mobyJson.importRun.startedAt,
+    );
+    expect(mobyJson.mappingProfile.mappings).toContainEqual({
+      sourceField: "Package ID",
+      canonicalField: "package.id",
+      status: "mapped",
+    });
+    expect(mobyJson.importRun).toMatchObject({
+      id: "moby-run",
+      source: "korona",
+      status: "completed_with_warnings",
+      filename: path.join(
+        projectRoot,
+        "samples",
+        "korona-export-cursed-example.csv",
+      ),
+      completedAt: mobyJson.importRun.startedAt,
+      summary: {
+        rowCount: 4,
+        successCount: 4,
+        warningCount: mobyJson.validationIssues.length,
+        errorCount: 0,
+      },
+    });
+    expect(mobyJson.validationIssues.length).toBeGreaterThan(0);
+
+    const missingPackageIssue = mobyJson.validationIssues.find(
+      (issue) => issue.code === "MISSING_PACKAGE_ID",
+    );
+
+    expect(missingPackageIssue).toMatchObject({
+      code: "MISSING_PACKAGE_ID",
+      severity: "warning",
+      message: "Package ID is missing.",
+      field: "package.id",
+      rowNumber: 2,
+      metadata: {
+        productName: "Blue Dream 3.5g",
+        packageId: "",
+        quantity: "20",
+        totalCost: "400.00",
+      },
+    });
   });
 
   it("fails fast for a bad mapping without creating run outputs", async () => {
