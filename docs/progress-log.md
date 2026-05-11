@@ -461,3 +461,39 @@ Covered workflows:
 Product insight:
 
 The core import mapper behavior is now protected by automated tests. Future changes can be checked against the current working prototype behavior.
+
+
+
+
+
+## v1.1 - MOBY Bridge Layer
+
+Status: Working
+
+Added a MOBY bridge layer that lets the file-based import mapper express its artifacts using moby-core contracts without changing existing CLI behavior.
+
+Bridge coverage:
+
+- normalized field -> CanonicalField
+- MappingFile -> MappingProfile
+- RunManifest -> ImportRun
+- WarningRow -> ValidationIssue
+- MOBY import pieces -> MobyImportSummary
+
+Validated commands:
+
+npm run build
+npm test
+
+Validated result:
+
+Test Files  6 passed (6)
+Tests       27 passed (27)
+
+Product insight:
+
+The import mapper now preserves its practical file-based workflow while exposing a portable MOBY-compatible contract layer. This creates the first real cross-repo integration between trackingthc-import-mapper and moby-core without rewriting the working CLI.
+
+Next target:
+
+v1.2 - Optional MOBY JSON sidecar export.
