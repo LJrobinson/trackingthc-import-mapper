@@ -10,6 +10,7 @@ CSV export + mapping JSON
 -> warnings.csv
 -> summary.md
 -> run-manifest.json
+-> moby-run-manifest.json for run-directory imports
 -> index.json
 -> optional moby-import.json
 ```
@@ -52,8 +53,8 @@ Status: Working MVP
 Language: TypeScript
 Runtime: Node.js
 Test runner: Vitest
-Current documentation milestone: v1.5 - Versioned MOBY JSON Sidecar Metadata
-Known test checkpoint: 7 test files, 45 tests passing
+Current documentation milestone: v1.6 - MOBY Run Manifest Sidecar
+Verification: run the local test and build commands after changes
 ```
 
 The core behavior is covered by tests, but the project should still be treated as an ingestion prototype rather than production infrastructure.
@@ -127,9 +128,12 @@ output/runs/clean-lap-001/
   warnings.csv
   summary.md
   run-manifest.json
+  moby-run-manifest.json
 
 output/runs/index.json
 ```
+
+`run-manifest.json` remains the existing mapper-local audit file. `moby-run-manifest.json` is an additional MOBY-compatible run manifest sidecar for downstream tools.
 
 ### MOBY JSON Sidecar Export
 
@@ -213,6 +217,28 @@ A file-based import history when using `--run-dir`.
   }
 ]
 ```
+
+### `moby-run-manifest.json`
+
+An automatically generated MOBY-compatible run manifest sidecar for `--run-dir` imports. It does not replace `run-manifest.json`; it describes the same run using the shared `MobyRunManifest` contract from `moby-core`.
+
+It includes:
+
+```txt
+schemaVersion
+runId
+runType
+generatedBy
+generatedAt
+status
+sources
+artifacts
+warnings
+summary
+metadata
+```
+
+The artifact list points at the files in the saved run, including `normalized.csv`, `warnings.csv`, `summary.md`, the existing `run-manifest.json`, `../index.json`, itself, and `moby-import.json` when that optional sidecar was requested with `--moby-json`.
 
 ### `moby-import.json`
 
@@ -336,11 +362,11 @@ The project sits between shared contracts and the TrackingTHC review experience:
 ```txt
 moby-core
   defines shared contracts
-  MappingProfile, ImportRun, ValidationIssue, InventoryPackage
+  MappingProfile, ImportRun, ValidationIssue, InventoryPackage, MobyRunManifest
 
 trackingthc-import-mapper
   consumes those contracts
-  converts local CSV import artifacts into versioned MOBY JSON sidecars
+  converts local CSV import artifacts into versioned MOBY JSON sidecars and run manifests
 
 trackingthc.com
   consumes and displays sidecars at /import-review
@@ -446,6 +472,7 @@ src/moby-import-run.ts
 src/moby-validation-issue.ts
 src/moby-inventory-package.ts
 src/moby-import-summary.ts
+src/moby-run-manifest.ts
 ```
 
 Current bridge coverage:
@@ -457,6 +484,7 @@ RunManifest      -> ImportRun
 WarningRow       -> ValidationIssue
 normalized row   -> InventoryPackage
 MOBY pieces      -> MobyImportSummary
+run output files -> MobyRunManifest
 ```
 
 ---
@@ -482,11 +510,15 @@ Run CLI with saved run directory:
 npm run import -- --csv <path> --map <path> --run-dir output/runs --run-id my-run-001
 ```
 
+Run-directory imports also write `moby-run-manifest.json` beside the existing run outputs.
+
 Run CLI with MOBY sidecar:
 
 ```bash
 npm run import -- --csv <path> --map <path> --run-dir output/runs --run-id my-run-001 --moby-json output/runs/my-run-001/moby-import.json
 ```
+
+`moby-import.json` remains optional and is written only when `--moby-json` is provided. When present, it is referenced from `moby-run-manifest.json`.
 
 ---
 
@@ -510,6 +542,7 @@ src/
   moby-import-summary.ts
   moby-inventory-package.ts
   moby-mapping-profile.ts
+  moby-run-manifest.ts
   moby-validation-issue.ts
   normalized-to-canonical-field.ts
 
@@ -519,6 +552,7 @@ tests/
   moby-import-summary.test.ts
   moby-inventory-package.test.ts
   moby-mapping-profile.test.ts
+  moby-run-manifest.test.ts
   moby-validation-issue.test.ts
   normalized-to-canonical-field.test.ts
 ```
@@ -531,6 +565,7 @@ tests/
 v1.4   - InventoryPackage entities in MOBY sidecar
 v1.4.1 - Hardened money parsing for package costs
 v1.5   - Versioned MOBY sidecar metadata
+v1.6   - MOBY Run Manifest sidecar for saved run directories
 ```
 
 ### v1.4 - Packages In The MOBY Sidecar
@@ -544,6 +579,10 @@ MOBY package costs now support common POS/accounting money strings. Invalid valu
 ### v1.5 - Versioned Sidecar Metadata
 
 The sidecar now includes top-level `schemaVersion`, `generatedBy`, and `generatedAt` fields. `trackingthc.com/import-review` can display this metadata alongside package and warning details.
+
+### v1.6 - MOBY Run Manifest Sidecar
+
+Saved run directories now include `moby-run-manifest.json`, an additive `MobyRunManifest` sidecar that lists run sources, generated artifacts, warning metadata, summary counts, and module metadata without changing existing output files.
 
 ---
 

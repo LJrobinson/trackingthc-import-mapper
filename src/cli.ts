@@ -10,6 +10,10 @@ import {
 } from "./moby-inventory-package.js";
 import { toMobyImportRun, type MapperRunManifest } from "./moby-import-run.js";
 import { toMobyMappingProfile } from "./moby-mapping-profile.js";
+import {
+  createMobyRunManifest,
+  MOBY_RUN_MANIFEST_FILE_NAME,
+} from "./moby-run-manifest.js";
 import { toMobyValidationIssue } from "./moby-validation-issue.js";
 
 type CliArgs = {
@@ -166,6 +170,19 @@ async function main(): Promise<void> {
         warnings,
       )
     : undefined;
+  const mobyRunManifestPath =
+    args.runDir && runIndexPath
+      ? await writeMobyRunManifest(
+          args,
+          outputPaths,
+          mapping,
+          counts,
+          runInfo,
+          warnings,
+          runIndexPath,
+          mobyJsonPath,
+        )
+      : undefined;
 
   console.log(`Run ID: ${runInfo.runId}`);
   console.log(`Rows processed: ${normalizedRows.length}`);
@@ -180,6 +197,9 @@ async function main(): Promise<void> {
   }
   if (mobyJsonPath) {
     console.log(`MOBY JSON written: ${mobyJsonPath}`);
+  }
+  if (mobyRunManifestPath) {
+    console.log(`MOBY run manifest written: ${mobyRunManifestPath}`);
   }
 }
 
@@ -765,6 +785,56 @@ async function writeMobyJson(
   await writeFile(mobyJson, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
 
   return mobyJson;
+}
+
+async function writeMobyRunManifest(
+  args: CliArgs,
+  outputPaths: OutputPaths,
+  mapping: MappingFile,
+  counts: RunCounts,
+  runInfo: RunInfo,
+  warnings: WarningRow[],
+  runIndexPath: string,
+  mobyJsonPath: string | undefined,
+): Promise<string> {
+  if (!args.runDir) {
+    usage();
+  }
+
+  const mobyRunManifestPath = path.join(
+    args.runDir,
+    runInfo.runId,
+    MOBY_RUN_MANIFEST_FILE_NAME,
+  );
+  const manifest = createMobyRunManifest({
+    runId: runInfo.runId,
+    ranAt: runInfo.ranAt,
+    sourceSystem: mapping.source_system ?? "csv",
+    sourceFile: args.csv,
+    mappingFile: args.map,
+    outputFile: outputPaths.out,
+    warningsFile: outputPaths.warnings,
+    summaryFile: outputPaths.summary,
+    legacyManifestFile: outputPaths.manifest,
+    indexFile: runIndexPath,
+    mobyImportFile: mobyJsonPath,
+    mobyRunManifestFile: mobyRunManifestPath,
+    rowsProcessed: counts.rowsProcessed,
+    unitCostsCalculated: counts.unitCostsCalculated,
+    warningCount: counts.warnings,
+    warnings,
+  });
+
+  await mkdir(path.dirname(path.resolve(mobyRunManifestPath)), {
+    recursive: true,
+  });
+  await writeFile(
+    mobyRunManifestPath,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
+
+  return mobyRunManifestPath;
 }
 
 function toNormalizedPackageRow(

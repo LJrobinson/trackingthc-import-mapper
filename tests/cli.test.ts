@@ -81,6 +81,45 @@ type MobyJsonSidecar = {
   }>;
 };
 
+type MobyRunManifestSidecar = {
+  schemaVersion: string;
+  generatedBy: string;
+  generatedAt: string;
+  runId: string;
+  runType: string;
+  status: string;
+  sources: Array<{
+    system: string;
+    fileName?: string;
+    filePath?: string;
+  }>;
+  artifacts: Array<{
+    id: string;
+    role: string;
+    path: string;
+    format: string;
+    mediaType?: string;
+    metadata?: Record<string, unknown>;
+  }>;
+  warnings: Array<{
+    code: string;
+    severity: string;
+    message: string;
+    artifactId?: string;
+    field?: string;
+    rowNumber?: number;
+    metadata?: Record<string, unknown>;
+  }>;
+  summary: {
+    processedCount: number;
+    successCount: number;
+    warningCount: number;
+    errorCount: number;
+    artifactCount: number;
+    metadata?: Record<string, unknown>;
+  };
+};
+
 const require = createRequire(import.meta.url);
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(testDir, "..");
@@ -104,10 +143,16 @@ describe("TrackingTHC Import Mapper CLI", () => {
     const tempDir = await makeTempDir();
     const runDir = path.join(tempDir, "runs");
     const runId = "clean-run";
+    const sourceFile = path.join(
+      projectRoot,
+      "tests",
+      "fixtures",
+      "clean-export.csv",
+    );
 
     const result = await runCli([
       "--csv",
-      path.join(projectRoot, "tests", "fixtures", "clean-export.csv"),
+      sourceFile,
       "--map",
       path.join(projectRoot, "samples", "korona-mapping.json"),
       "--run-dir",
@@ -121,6 +166,7 @@ describe("TrackingTHC Import Mapper CLI", () => {
     const warningsPath = path.join(runPath, "warnings.csv");
     const summaryPath = path.join(runPath, "summary.md");
     const manifestPath = path.join(runPath, "run-manifest.json");
+    const mobyRunManifestPath = path.join(runPath, "moby-run-manifest.json");
     const indexPath = path.join(runDir, "index.json");
     const mobyJsonPath = path.join(runPath, "moby.json");
 
@@ -129,6 +175,7 @@ describe("TrackingTHC Import Mapper CLI", () => {
     await expectFile(warningsPath);
     await expectFile(summaryPath);
     await expectFile(manifestPath);
+    await expectFile(mobyRunManifestPath);
     await expectFile(indexPath);
     await expectMissing(mobyJsonPath);
 
@@ -144,6 +191,115 @@ describe("TrackingTHC Import Mapper CLI", () => {
     }>;
     expect(index).toHaveLength(1);
     expect(index[0]?.run_id).toBe(runId);
+
+    const manifest = JSON.parse(
+      await readFile(manifestPath, "utf8"),
+    ) as Record<string, unknown>;
+    expect(Object.keys(manifest).sort()).toEqual(
+      [
+        "run_id",
+        "status",
+        "source_system",
+        "source_file",
+        "mapping_file",
+        "output_file",
+        "warnings_file",
+        "summary_file",
+        "rows_processed",
+        "unit_costs_calculated",
+        "warnings",
+        "ran_at",
+      ].sort(),
+    );
+    expect(manifest).toMatchObject({
+      run_id: runId,
+      status: "success",
+      source_system: "korona",
+      source_file: sourceFile,
+      output_file: normalizedPath,
+      warnings_file: warningsPath,
+      summary_file: summaryPath,
+      rows_processed: 2,
+      unit_costs_calculated: 2,
+      warnings: 0,
+    });
+
+    const mobyRunManifest = JSON.parse(
+      await readFile(mobyRunManifestPath, "utf8"),
+    ) as MobyRunManifestSidecar;
+
+    expect(mobyRunManifest).toMatchObject({
+      schemaVersion: "1.0",
+      generatedBy: "trackingthc-import-mapper",
+      runId,
+      runType: "trackingthc_import",
+      status: "completed",
+      sources: [
+        {
+          system: "korona",
+          fileName: "clean-export.csv",
+          filePath: sourceFile,
+        },
+      ],
+      summary: {
+        processedCount: 2,
+        successCount: 2,
+        warningCount: 0,
+        errorCount: 0,
+        metadata: {
+          unitCostsCalculated: 2,
+        },
+      },
+    });
+    expect(mobyRunManifest.summary.artifactCount).toBe(
+      mobyRunManifest.artifacts.length,
+    );
+    expect(
+      artifactById(mobyRunManifest, "artifact_normalized_csv"),
+    ).toMatchObject({
+      role: "output",
+      path: "normalized.csv",
+      format: "csv",
+    });
+    expect(artifactById(mobyRunManifest, "artifact_warnings_csv")).toMatchObject(
+      {
+        role: "warnings",
+        path: "warnings.csv",
+        format: "csv",
+      },
+    );
+    expect(artifactById(mobyRunManifest, "artifact_summary_md")).toMatchObject({
+      role: "summary",
+      path: "summary.md",
+      format: "markdown",
+    });
+    expect(
+      artifactById(mobyRunManifest, "artifact_run_manifest_json"),
+    ).toMatchObject({
+      role: "manifest",
+      path: "run-manifest.json",
+      format: "json",
+    });
+    expect(
+      artifactById(mobyRunManifest, "artifact_run_index_json"),
+    ).toMatchObject({
+      role: "other",
+      path: "../index.json",
+      format: "json",
+      metadata: {
+        kind: "run_index",
+      },
+    });
+    expect(
+      artifactById(mobyRunManifest, "artifact_moby_run_manifest_json"),
+    ).toMatchObject({
+      role: "manifest",
+      path: "moby-run-manifest.json",
+      format: "json",
+    });
+    expect(
+      artifactById(mobyRunManifest, "artifact_moby_import_json"),
+    ).toBeUndefined();
   });
 
   it("handles money-format values and reports warning totals", async () => {
@@ -202,6 +358,7 @@ describe("TrackingTHC Import Mapper CLI", () => {
     const warningsPath = path.join(runPath, "warnings.csv");
     const summaryPath = path.join(runPath, "summary.md");
     const manifestPath = path.join(runPath, "run-manifest.json");
+    const mobyRunManifestPath = path.join(runPath, "moby-run-manifest.json");
     const indexPath = path.join(runDir, "index.json");
 
     expect(result.code).toBe(0);
@@ -210,6 +367,7 @@ describe("TrackingTHC Import Mapper CLI", () => {
     await expectFile(warningsPath);
     await expectFile(summaryPath);
     await expectFile(manifestPath);
+    await expectFile(mobyRunManifestPath);
     await expectFile(indexPath);
     await expectFile(mobyJsonPath);
 
@@ -272,6 +430,18 @@ describe("TrackingTHC Import Mapper CLI", () => {
         quantity: "20",
         totalCost: "400.00",
       },
+    });
+
+    const mobyRunManifest = JSON.parse(
+      await readFile(mobyRunManifestPath, "utf8"),
+    ) as MobyRunManifestSidecar;
+
+    expect(
+      artifactById(mobyRunManifest, "artifact_moby_import_json"),
+    ).toMatchObject({
+      role: "sidecar",
+      path: portableRelativePath(runPath, mobyJsonPath),
+      format: "json",
     });
   });
 
@@ -501,4 +671,15 @@ async function expectMissing(filePath: string): Promise<void> {
 
 function nonEmptyLines(text: string): string[] {
   return text.split(/\r?\n/).filter((line) => line.trim() !== "");
+}
+
+function artifactById(
+  manifest: MobyRunManifestSidecar,
+  artifactId: string,
+) {
+  return manifest.artifacts.find((artifact) => artifact.id === artifactId);
+}
+
+function portableRelativePath(fromDir: string, toPath: string): string {
+  return path.relative(fromDir, toPath).replace(/\\/g, "/");
 }
