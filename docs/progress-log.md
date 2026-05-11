@@ -625,7 +625,7 @@ The import mapper now emits a portable MOBY artifact containing both import meta
 
 Status: Working
 
-Fixed MOBY sidecar package cost parsing so InventoryPackage.totalCost is included when total_cost contains common POS/accounting money formats.
+Fixed MOBY sidecar package cost parsing so `InventoryPackage.totalCost` is included when `total_cost` contains common POS/accounting money formats.
 
 Supported total_cost formats now include:
 
@@ -636,15 +636,16 @@ Supported total_cost formats now include:
 - ($42.00)
 - -42.00
 
-Invalid values are still omitted from InventoryPackage.totalCost and surfaced through validation issues instead of being coerced into misleading values.
+Invalid values are still omitted from `InventoryPackage.totalCost` and surfaced through `validationIssues` instead of being coerced into misleading values.
 
 Validated behavior:
 
-- valid money-formatted total_cost values render as package.totalCost in moby-import.json
-- invalid total_cost values such as N/A omit totalCost
-- unitCost behavior remains intact
+- valid money-formatted `total_cost` values render as `package.totalCost` in `moby-import.json`
+- invalid `total_cost` values such as `N/A` omit `totalCost`
+- bad cost rows remain unresolved and explain themselves through validation issues
+- `unitCost` behavior remains intact
 - quantity parsing remains strict
-- the TrackingTHC Import Review Viewer now displays real generated package totals correctly
+- the `trackingthc.com` import review viewer confirmed the fix by displaying generated package totals correctly
 
 Validated commands:
 
@@ -653,8 +654,47 @@ npm test
 
 Product insight:
 
-The MOBY sidecar now preserves real-world cannabis POS/accounting money formats while still refusing invalid values. This keeps the import payload truthful: good cost data becomes structured InventoryPackage money, while bad cost data remains visibly unresolved for review.
+The MOBY sidecar now preserves real-world cannabis POS/accounting money formats while still refusing invalid values. This keeps the import payload truthful: good cost data becomes structured `InventoryPackage` money, while bad cost data remains visibly unresolved for review.
 
-Next target:
+## v1.5 - Versioned MOBY JSON Sidecar Metadata
 
-v1.5 - Sidecar schema/version metadata.
+Status: Working
+
+Added top-level schema metadata to the optional MOBY JSON sidecar.
+
+The sidecar now includes:
+
+- schemaVersion
+- generatedBy
+- generatedAt
+- mappingProfile
+- importRun
+- validationIssues
+- packages
+
+Current top-level shape:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "generatedBy": "trackingthc-import-mapper",
+  "generatedAt": "2026-05-10T19:25:43.000Z",
+  "mappingProfile": {},
+  "importRun": {},
+  "validationIssues": [],
+  "packages": []
+}
+```
+
+Validated behavior:
+
+- `schemaVersion` identifies the sidecar contract version
+- `generatedBy` identifies the generator as `trackingthc-import-mapper`
+- `generatedAt` records the import generation timestamp
+- packages remain available as `InventoryPackage` entities
+- validation issues remain available for row-level review
+- `trackingthc.com` displays schema metadata in the import review experience
+
+Product insight:
+
+The MOBY sidecar is now safer for cross-app ingestion. `trackingthc.com` can display which generator and schema produced a sidecar before reviewers inspect mappings, warnings, or package costs.

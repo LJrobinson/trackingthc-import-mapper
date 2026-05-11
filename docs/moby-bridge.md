@@ -1,65 +1,53 @@
 # MOBY Bridge
 
-> Purpose: document how `trackingthc-import-mapper` connects to `moby-core` without changing the CLI’s working file-based behavior.
+Purpose: document how `trackingthc-import-mapper` connects to `moby-core` without changing the CLI's working file-based behavior.
 
-`trackingthc-import-mapper` is a working import CLI.
+`trackingthc-import-mapper` is the import CLI. It reads cannabis POS/export CSV files, applies a mapping JSON file, writes normalized outputs, records warnings, and optionally emits a MOBY JSON sidecar.
 
-`moby-core` is the shared contract layer for the broader MOBY ecosystem.
+`moby-core` is the shared contract layer for the broader MOBY ecosystem. It defines portable types that other apps can consume without knowing the mapper's internal file formats.
 
-This project now has a bridge between the two.
-
-The CLI keeps its current outputs:
+The bridge keeps those responsibilities separate:
 
 ```txt
-normalized.csv
-warnings.csv
-summary.md
-run-manifest.json
-index.json
+trackingthc-import-mapper
+  owns CSV parsing, mapping validation, row normalization, warnings, and files
+
+moby-core
+  owns shared contracts such as MappingProfile, ImportRun, ValidationIssue, and InventoryPackage
+
+bridge adapters
+  convert local mapper artifacts into moby-core contracts
 ```
 
-The bridge adapters convert those local app artifacts into `moby-core` domain contracts:
-
-```txt
-MappingFile      -> MappingProfile
-RunManifest      -> ImportRun
-WarningRow       -> ValidationIssue
-normalized field -> CanonicalField
-```
-
-The goal is not to rewrite the CLI.
-
-The goal is to let the working CLI speak MOBY.
-
-Clipboard goblin approved.
+The goal is not to rewrite the CLI. The goal is to let the working CLI speak MOBY.
 
 ---
 
 ## Current Boundary
 
-### trackingthc-import-mapper owns behavior
+### `trackingthc-import-mapper` Owns Behavior
 
 This repo owns:
 
 ```txt
 CSV parsing
 mapping JSON loading
+mapping header validation
 field normalization
 unit_cost calculation
 warning generation
-file writing
-run directory creation
+normalized CSV writing
+warnings CSV writing
+Markdown summary writing
 run manifest writing
 run index writing
-Markdown summary writing
+optional MOBY sidecar writing
 CLI commands and flags
 ```
 
-These are app behaviors.
+These are app behaviors and should stay in this repo.
 
-They should stay here.
-
-### moby-core owns shared contracts
+### `moby-core` Owns Shared Contracts
 
 `moby-core` owns portable shared types such as:
 
@@ -70,22 +58,21 @@ FieldMapping
 ImportRun
 ImportSummary
 ValidationIssue
-ExternalSystem
+ExternalReference
+InventoryPackage
+Money
+Quantity
 ```
 
-These are shared contracts.
-
-They should not contain app-specific CLI behavior.
+These are ecosystem contracts. They should not contain CLI-specific file parsing, folder layout, or command behavior.
 
 ---
 
-## Why the Bridge Exists
+## Why The Bridge Exists
 
 The CLI and `moby-core` intentionally use different dialects.
 
-### CLI normalized fields
-
-The CLI emits snake_case normalized output headers:
+CLI normalized fields use snake_case headers that are useful in CSV files:
 
 ```txt
 product_name
@@ -96,11 +83,7 @@ unit_cost
 vendor
 ```
 
-These are useful for CSV output.
-
-### moby-core canonical fields
-
-`moby-core` uses domain dot paths:
+`moby-core` canonical fields use domain dot paths that are useful in shared contracts:
 
 ```txt
 product.name
@@ -111,19 +94,42 @@ package.unitCost
 vendor.name
 ```
 
-These are useful for shared contracts.
+The bridge maps between those dialects. Do not replace `normalized.csv` headers with MOBY dot paths; that would change the CLI's product surface.
 
-The bridge maps between them.
+---
 
-Do not replace the CLI output headers with dot paths.
+## Bridge Coverage
 
-That would break the current product behavior.
+Current adapters cover:
+
+```txt
+normalized field -> CanonicalField
+MappingFile      -> MappingProfile
+RunManifest      -> ImportRun
+WarningRow       -> ValidationIssue
+normalized row   -> InventoryPackage
+MOBY pieces      -> MobyImportSummary
+```
+
+The optional sidecar summary currently includes:
+
+```txt
+schemaVersion
+generatedBy
+generatedAt
+mappingProfile
+importRun
+validationIssues
+packages
+```
+
+That makes `moby-import.json` a versioned contract payload rather than an unlabelled bundle of nested objects.
 
 ---
 
 ## Bridge Modules
 
-### 1. Normalized Field to Canonical Field
+### 1. Normalized Field To Canonical Field
 
 File:
 
@@ -150,17 +156,9 @@ total_cost    -> package.totalCost
 unit_cost     -> package.unitCost
 ```
 
-Unknown fields return:
+Unknown fields return `undefined`. That is intentional; not every local field has a safe shared contract equivalent yet.
 
-```txt
-undefined
-```
-
-This is intentional.
-
-Not every CLI normalized field has a safe `moby-core` canonical equivalent yet.
-
-Examples intentionally not mapped yet:
+Examples intentionally not mapped unless `moby-core` gains exact contract fields:
 
 ```txt
 sku
@@ -173,11 +171,9 @@ source_file_name
 imported_at
 ```
 
-Do not force these into nearby fields unless `moby-core` gains an exact contract field.
-
 ---
 
-### 2. MappingFile to MappingProfile
+### 2. MappingFile To MappingProfile
 
 File:
 
@@ -188,7 +184,7 @@ src/moby-mapping-profile.ts
 Purpose:
 
 ```txt
-Convert the app’s mapping JSON shape into a moby-core MappingProfile.
+Convert the app's mapping JSON shape into a moby-core MappingProfile.
 ```
 
 Current app mapping shape:
@@ -211,7 +207,7 @@ MOBY-compatible result concept:
 ```ts
 {
   id: "mapping-profile-id",
-  name: "Mapping Profile Name",
+  name: "korona import mapping",
   source: "korona",
   createdAt: "2026-05-10T20:00:00.000Z",
   mappings: [
@@ -229,7 +225,7 @@ MOBY-compatible result concept:
 }
 ```
 
-Unknown normalized fields become:
+Unknown normalized fields become review items:
 
 ```ts
 {
@@ -239,15 +235,11 @@ Unknown normalized fields become:
 }
 ```
 
-This is intentional.
-
-Unknown fields should not throw.
-
-They should be marked for review.
+Mapping conversion should not throw just because a normalized field has no MOBY equivalent.
 
 ---
 
-### 3. Run Manifest to ImportRun
+### 3. RunManifest To ImportRun
 
 File:
 
@@ -258,7 +250,7 @@ src/moby-import-run.ts
 Purpose:
 
 ```txt
-Convert the app’s persisted run manifest into a moby-core ImportRun.
+Convert the app's persisted run manifest into a moby-core ImportRun.
 ```
 
 Current app manifest shape is snake_case:
@@ -315,13 +307,11 @@ failed                  -> failed
 anything else           -> completed_with_warnings
 ```
 
-The app’s manifest stays unchanged.
-
-The adapter produces the portable contract shape.
+The app's manifest stays unchanged. The adapter produces the portable contract shape.
 
 ---
 
-### 4. WarningRow to ValidationIssue
+### 4. WarningRow To ValidationIssue
 
 File:
 
@@ -365,7 +355,7 @@ MOBY-compatible result concept:
 }
 ```
 
-Known warning code field inference:
+Known warning-code field inference:
 
 ```txt
 INVALID_QUANTITY         -> package.quantity
@@ -375,30 +365,131 @@ MISSING_PACKAGE_ID       -> package.id
 MISSING_PRODUCT_NAME     -> product.name
 ```
 
-Unknown warning codes:
+Unknown warning codes should preserve code and message, omit `field`, and continue conversion.
+
+---
+
+### 5. Normalized Row To InventoryPackage
+
+File:
 
 ```txt
-do not throw
-omit field
-preserve code and message
+src/moby-inventory-package.ts
 ```
 
-Metadata behavior:
+Purpose:
 
 ```txt
-include productName, packageId, quantity, totalCost when present
-omit undefined metadata fields
+Convert a normalized CSV row into a moby-core InventoryPackage.
 ```
+
+Normalized row concept:
+
+```ts
+{
+  product_name: "Blue Dream 3.5g",
+  package_id: "1A406030000123",
+  quantity: "20",
+  total_cost: "$400.00",
+  unit_cost: "20.00",
+  vendor: "Some Vendor"
+}
+```
+
+MOBY-compatible result concept:
+
+```ts
+{
+  id: "package_1A406030000123",
+  label: "1A406030000123",
+  quantity: {
+    value: 20,
+    unit: "each"
+  },
+  unitCost: {
+    amount: 20,
+    currency: "USD"
+  },
+  totalCost: {
+    amount: 400,
+    currency: "USD"
+  },
+  metadata: {
+    productName: "Blue Dream 3.5g",
+    vendorName: "Some Vendor",
+    rowNumber: 2,
+    sourceFile: "samples/korona-export-money-example.csv"
+  },
+  externalReferences: [
+    {
+      system: "korona",
+      externalId: "samples/korona-export-money-example.csv:2",
+      label: "Normalized row reference"
+    }
+  ]
+}
+```
+
+Package ID behavior:
+
+```txt
+package_id present                -> package_<trimmed package_id>
+package_id missing + rowNumber    -> package_row_<rowNumber>
+package_id missing + no rowNumber -> package_unidentified
+```
+
+Money parsing supports common POS/accounting formats:
+
+```txt
+400.00
+$400.00
+1,250.00
+" $400.00 "
+($42.00)
+-42.00
+```
+
+Invalid money values, such as `N/A`, are omitted from `unitCost` or `totalCost` and remain visible through warnings and `validationIssues`.
+
+---
+
+### 6. MOBY Pieces To MobyImportSummary
+
+File:
+
+```txt
+src/moby-import-summary.ts
+```
+
+Purpose:
+
+```txt
+Combine bridge outputs into the versioned sidecar summary written as moby-import.json.
+```
+
+Current summary shape:
+
+```ts
+{
+  schemaVersion: "1.0";
+  generatedBy: "trackingthc-import-mapper";
+  generatedAt: string;
+  mappingProfile: MappingProfile;
+  importRun: ImportRun;
+  validationIssues: ValidationIssue[];
+  packages?: InventoryPackage[];
+}
+```
+
+`schemaVersion`, `generatedBy`, and `generatedAt` are top-level metadata so consumers can display and validate the sidecar before drilling into packages or warnings.
 
 ---
 
 ## Design Rules
 
-### 1. Do not change working CLI output just to match moby-core
+### 1. Do Not Change Working CLI Output Just To Match `moby-core`
 
-The CLI output format is a product surface.
-
-These must remain stable unless intentionally versioned:
+The CLI output format is a product surface. These files should remain stable unless intentionally versioned:
 
 ```txt
 normalized.csv
@@ -410,7 +501,7 @@ index.json
 
 The bridge exists so these outputs can be represented in MOBY terms without breaking existing behavior.
 
-### 2. Keep app-specific types local
+### 2. Keep App-Specific Types Local
 
 These should remain local unless there is a strong reason to promote them:
 
@@ -421,63 +512,43 @@ RunIndexEntry
 RunManifest
 ```
 
-Reason:
+They reflect this CLI's persisted file format and output behavior.
 
-```txt
-They reflect this CLI’s persisted file format and output behavior.
-```
+### 3. Prefer Adapters Over Refactors
 
-`moby-core` types should remain portable.
-
-### 3. Prefer adapters over refactors
-
-Good:
+Preferred flow:
 
 ```txt
 local artifact -> adapter -> moby-core contract
 ```
 
-Risky:
+This preserves CLI behavior while exposing portable shapes to downstream consumers.
 
-```txt
-rewrite local artifact to be moby-core contract directly
-```
+### 4. Unknown Fields Should Become Review Items
 
-The first preserves behavior.
-
-The second can break CLI output and tests.
-
-### 4. Unknown fields should become review items, not crashes
-
-For mapping conversion:
+Mapping conversion:
 
 ```txt
 unknown normalized field -> FieldMapping status: needs_review
 ```
 
-For warning conversion:
+Warning conversion:
 
 ```txt
 unknown warning code -> ValidationIssue without field
 ```
 
-The bridge should be tolerant.
+The bridge should be tolerant. Review workflows can decide what to do later.
 
-The review workflow can decide what to do later.
+### 5. Do Not Add New `moby-core` Primitives Casually
 
-### 5. Do not add new moby-core primitives from this repo casually
-
-If a local app field does not map to `moby-core`, do not immediately modify `moby-core`.
-
-First ask:
+If a local app field does not map to `moby-core`, first ask:
 
 ```txt
 Will at least two MOBY apps need this field or contract?
 ```
 
-If no, keep it local.
-
-If yes, add it deliberately in `moby-core` with tests and docs.
+If no, keep it local. If yes, add it deliberately in `moby-core` with tests and docs.
 
 ---
 
@@ -490,6 +561,8 @@ tests/normalized-to-canonical-field.test.ts
 tests/moby-mapping-profile.test.ts
 tests/moby-import-run.test.ts
 tests/moby-validation-issue.test.ts
+tests/moby-inventory-package.test.ts
+tests/moby-import-summary.test.ts
 ```
 
 CLI regression tests:
@@ -498,34 +571,12 @@ CLI regression tests:
 tests/cli.test.ts
 ```
 
-Current intended verification:
-
-```txt
-npm run build
-npm test
-```
-
 Known passing checkpoint:
 
 ```txt
-5 test files passed
-23 tests passed
+Test Files  7 passed (7)
+Tests       45 passed (45)
 ```
-
----
-
-## Current Bridge Coverage
-
-The project can now express:
-
-```txt
-MappingFile      -> MappingProfile
-RunManifest      -> ImportRun
-WarningRow       -> ValidationIssue
-normalized field -> CanonicalField
-```
-
-This gives the CLI a MOBY-compatible contract layer while preserving existing file outputs.
 
 ---
 
@@ -542,71 +593,32 @@ merge all bridge files into cli.ts
 move CLI behavior into moby-core
 add real API clients to moby-core
 add database persistence to moby-core
+coerce invalid money into zero
 ```
-
-Those are raccoon doors.
-
-Keep them closed.
 
 ---
 
 ## Future Useful Slices
 
-### 1. Create a combined MOBY import summary helper
-
-Potential file:
+Potential next slices:
 
 ```txt
-src/moby-import-summary.ts
+sample sidecar gallery
+upload/local sidecar review in trackingthc.com
+reconciliation prep
+accounting export comparison
+finance review workflow
 ```
 
-Possible purpose:
+Potential future flow:
 
 ```txt
-Combine MappingProfile, ImportRun, and ValidationIssue[] into one review object.
+moby-import.json packages
++ accounting package cost export
+-> ReconciliationRun
+-> ReconciliationIssue[]
+-> finance review
 ```
-
-This should still be additive.
-
-No CLI behavior change required.
-
-### 2. Export MOBY sidecar JSON
-
-Optional future CLI flag:
-
-```txt
---moby-json <path>
-```
-
-Potential output:
-
-```json
-{
-  "mappingProfile": {},
-  "importRun": {},
-  "validationIssues": []
-}
-```
-
-This would let the CLI emit a portable MOBY artifact.
-
-Do not add this until the bridge adapters are stable.
-
-### 3. Add reconciliation preparation
-
-Potential future bridge:
-
-```txt
-normalized.csv rows -> InventoryPackage[]
-```
-
-Then later:
-
-```txt
-InventoryPackage[] + accounting export -> ReconciliationRun
-```
-
-This is the path toward TrackingTHC reconciliation workflows.
 
 ---
 
@@ -614,14 +626,10 @@ This is the path toward TrackingTHC reconciliation workflows.
 
 The CLI should continue to work as a simple file-based import mapper.
 
-The bridge should make its artifacts understandable to the MOBY ecosystem.
-
-That means:
+The bridge should make its artifacts understandable to the MOBY ecosystem:
 
 ```txt
-operators get stable CSV outputs
+operators get stable CSV and Markdown outputs
 future apps get shared domain contracts
-Codex gets fewer chances to put a raccoon in the engine bay
+reviewers get schema metadata, validation issues, and package costs in one sidecar
 ```
-
-Clipboard goblin approved.

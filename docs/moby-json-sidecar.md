@@ -1,36 +1,14 @@
 # MOBY JSON Sidecar
 
-> Purpose: document the optional `moby-import.json` payload emitted by `trackingthc-import-mapper`.
+Purpose: document the optional `moby-import.json` payload emitted by `trackingthc-import-mapper`.
 
-The MOBY JSON sidecar is an optional portable artifact created by the CLI when the user provides:
+The MOBY JSON sidecar is a portable import artifact created only when the CLI is run with:
 
 ```txt
 --moby-json <path>
 ```
 
-It allows the file-based import mapper to keep producing its normal operator-friendly files while also emitting a structured MOBY-compatible payload for future TrackingTHC apps.
-
-This is the bridge from:
-
-```txt
-working CLI outputs
-```
-
-to:
-
-```txt
-MOBY ecosystem ingestion payload
-```
-
-Tiny goblin payload confirmed.
-
----
-
-## Current CLI Behavior
-
-Default behavior is unchanged.
-
-If `--moby-json` is omitted, the CLI writes the normal files only:
+The normal CLI outputs remain unchanged. Depending on flags, they include:
 
 ```txt
 normalized.csv
@@ -40,15 +18,11 @@ run-manifest.json
 index.json
 ```
 
-No MOBY JSON file is written.
+The sidecar gives MOBY-aware consumers, including `trackingthc.com/import-review`, one versioned payload that describes the mapping profile, import run, validation issues, and package entities produced by the import.
 
-If `--moby-json <path>` is provided after a successful import, the CLI additionally writes:
+---
 
-```txt
-moby-import.json
-```
-
-Example command:
+## Example Command
 
 ```txt
 npm run import -- --csv samples/korona-export-money-example.csv --map samples/korona-mapping.json --run-dir output/runs --run-id moby-sidecar-test-001 --moby-json output/runs/moby-sidecar-test-001/moby-import.json
@@ -64,10 +38,13 @@ MOBY JSON written: output/runs/moby-sidecar-test-001/moby-import.json
 
 ## Payload Shape
 
-The current sidecar shape is:
+Current sidecar shape:
 
 ```ts
 {
+  schemaVersion: "1.0";
+  generatedBy: "trackingthc-import-mapper";
+  generatedAt: string;
   mappingProfile: MappingProfile;
   importRun: ImportRun;
   validationIssues: ValidationIssue[];
@@ -75,10 +52,13 @@ The current sidecar shape is:
 }
 ```
 
-In JSON form:
+JSON outline:
 
 ```json
 {
+  "schemaVersion": "1.0",
+  "generatedBy": "trackingthc-import-mapper",
+  "generatedAt": "2026-05-10T19:25:43.000Z",
   "mappingProfile": {},
   "importRun": {},
   "validationIssues": [],
@@ -86,13 +66,39 @@ In JSON form:
 }
 ```
 
-The `packages` key is included when package entities are generated from normalized rows.
+The top-level schema metadata is part of the current contract. It lets consumers distinguish one sidecar format from another without inspecting every nested object.
+
+---
+
+## Top-Level Metadata
+
+### `schemaVersion`
+
+The sidecar schema version emitted by this mapper. Current value:
+
+```txt
+1.0
+```
+
+### `generatedBy`
+
+The generator name. Current value:
+
+```txt
+trackingthc-import-mapper
+```
+
+### `generatedAt`
+
+The timestamp when the sidecar was generated. The CLI uses the same run timestamp as the import manifest so reviewers can connect the sidecar to the run folder.
+
+`trackingthc.com/import-review` displays this schema metadata so reviewers can see which generator and schema produced the loaded sidecar.
 
 ---
 
 ## Source Bridge Modules
 
-The sidecar is built using the local MOBY bridge layer:
+The sidecar is built from local CLI artifacts using bridge adapters:
 
 ```txt
 src/normalized-to-canonical-field.ts
@@ -109,19 +115,17 @@ Bridge flow:
 MappingFile      -> MappingProfile
 RunManifest      -> ImportRun
 WarningRow       -> ValidationIssue
-Normalized row   -> InventoryPackage
+normalized row   -> InventoryPackage
 MOBY pieces      -> MobyImportSummary
 ```
 
-The CLI still owns file parsing and output behavior.
-
-The bridge adapts those outputs into MOBY-compatible contracts.
+The CLI still owns CSV parsing, mapping validation, normalization, warning generation, and file writing. The bridge adapts those outputs into MOBY-compatible contracts.
 
 ---
 
 ## `mappingProfile`
 
-The `mappingProfile` describes how source CSV headers map into MOBY canonical fields.
+`mappingProfile` describes how source CSV headers map into MOBY canonical fields.
 
 Example source mapping JSON:
 
@@ -189,7 +193,7 @@ total_cost    -> package.totalCost
 unit_cost     -> package.unitCost
 ```
 
-Unknown normalized fields become:
+Unknown normalized fields become review entries:
 
 ```json
 {
@@ -201,15 +205,11 @@ Unknown normalized fields become:
 
 Unknown fields should not crash sidecar generation.
 
-They should create reviewable mapping entries.
-
 ---
 
 ## `importRun`
 
-The `importRun` describes the import event using MOBY portable shape.
-
-It is adapted from the local run manifest.
+`importRun` describes the import event using MOBY portable shape. It is adapted from the local `run-manifest.json`.
 
 Example:
 
@@ -247,15 +247,13 @@ failed                  -> failed
 anything else           -> completed_with_warnings
 ```
 
-The local `run-manifest.json` format remains unchanged.
-
-The sidecar adapts it into MOBY shape.
+The local run manifest remains app-specific. The sidecar adapts it into MOBY shape.
 
 ---
 
 ## `validationIssues`
 
-The `validationIssues` array contains MOBY-compatible warnings adapted from warning rows.
+`validationIssues` contains MOBY-compatible warnings adapted from `warnings.csv` rows.
 
 Example:
 
@@ -285,29 +283,13 @@ MISSING_PACKAGE_ID       -> package.id
 MISSING_PRODUCT_NAME     -> product.name
 ```
 
-Unknown warning codes:
-
-```txt
-do not throw
-omit field
-preserve code and message
-```
-
-Metadata behavior:
-
-```txt
-include productName when present
-include packageId when present
-include quantity when present
-include totalCost when present
-omit undefined metadata keys
-```
+Unknown warning codes should preserve code and message, omit `field`, and continue sidecar generation.
 
 ---
 
 ## `packages`
 
-The `packages` array contains MOBY `InventoryPackage` entities adapted from normalized rows.
+`packages` contains MOBY `InventoryPackage` entities adapted from normalized rows.
 
 Example normalized CSV row:
 
@@ -334,60 +316,55 @@ Example sidecar package:
     "amount": 400,
     "currency": "USD"
   },
+  "metadata": {
+    "productName": "Blue Dream 3.5g",
+    "vendorName": "Some Vendor",
+    "rowNumber": 2,
+    "sourceFile": "samples/korona-export-example.csv"
+  },
   "externalReferences": [
     {
       "system": "korona",
       "externalId": "samples/korona-export-example.csv:2",
       "label": "Normalized row reference"
     }
-  ],
-  "metadata": {
-    "productName": "Blue Dream 3.5g",
-    "vendorName": "Some Vendor",
-    "rowNumber": 2,
-    "sourceFile": "samples/korona-export-example.csv"
-  }
+  ]
 }
 ```
 
 Package ID behavior:
 
 ```txt
-package_id present               -> package_<trimmed package_id>
-package_id missing + rowNumber   -> package_row_<rowNumber>
+package_id present                -> package_<trimmed package_id>
+package_id missing + rowNumber    -> package_row_<rowNumber>
 package_id missing + no rowNumber -> package_unidentified
-```
-
-Label behavior:
-
-```txt
-package_id present -> label = package_id
-package_id missing -> label omitted
-```
-
-Numeric parsing behavior:
-
-```txt
-trim value
-Number(value)
-accept only finite numbers
-omit invalid values
-do not throw
 ```
 
 Quantity behavior:
 
 ```txt
-quantity valid -> { value, unit: "each" }
-quantity invalid/missing -> omitted
+valid quantity   -> { value, unit: "each" }
+invalid quantity -> quantity omitted
+missing quantity -> quantity omitted
 ```
 
 Money behavior:
 
 ```txt
-unit_cost valid  -> unitCost USD money
-total_cost valid -> totalCost USD money
-invalid/missing  -> omitted
+valid unit_cost   -> unitCost USD money
+valid total_cost  -> totalCost USD money
+invalid/missing   -> omitted
+```
+
+Supported money formats include:
+
+```txt
+400.00
+$400.00
+1,250.00
+" $400.00 "
+($42.00)
+-42.00
 ```
 
 External reference behavior:
@@ -412,22 +389,73 @@ Undefined metadata values are omitted.
 
 ---
 
+## Invalid Money Behavior
+
+Invalid money values are intentionally not coerced.
+
+For a row like:
+
+```csv
+product_name,package_id,quantity,total_cost,vendor,unit_cost
+Bad Cost Example,1A406030000888,10,N/A,Some Vendor,
+```
+
+The generated package omits `totalCost`:
+
+```json
+{
+  "id": "package_1A406030000888",
+  "label": "1A406030000888",
+  "quantity": {
+    "value": 10,
+    "unit": "each"
+  },
+  "metadata": {
+    "productName": "Bad Cost Example",
+    "vendorName": "Some Vendor",
+    "rowNumber": 5,
+    "sourceFile": "samples/korona-export-money-example.csv"
+  }
+}
+```
+
+The reason is preserved in `validationIssues`:
+
+```json
+{
+  "code": "INVALID_TOTAL_COST",
+  "severity": "warning",
+  "message": "Total cost is not a valid number.",
+  "field": "package.totalCost",
+  "rowNumber": 5,
+  "metadata": {
+    "productName": "Bad Cost Example",
+    "packageId": "1A406030000888",
+    "quantity": "10",
+    "totalCost": "N/A"
+  }
+}
+```
+
+`trackingthc.com/import-review` renders missing money values as `—` so reviewers can distinguish unresolved values from zero-dollar values.
+
+---
+
 ## What This File Is For
 
-Future TrackingTHC apps can ingest `moby-import.json` and immediately understand:
+Future TrackingTHC apps can ingest `moby-import.json` and understand:
 
 ```txt
 which file was imported
 which source system it came from
+which sidecar schema was generated
 how fields were mapped
 what warnings occurred
 what package entities were produced
 which rows/packages need review
 ```
 
-This avoids forcing future apps to understand every CLI implementation detail.
-
-They can consume the sidecar as a portable contract payload.
+This avoids forcing future apps to understand the CLI's internal file formats.
 
 ---
 
@@ -457,7 +485,7 @@ Do not write `moby-import.json` unless `--moby-json` is explicitly provided.
 
 ### 2. Existing output files stay stable
 
-Do not change:
+Do not change these files just to fit MOBY shape:
 
 ```txt
 normalized.csv
@@ -467,81 +495,45 @@ run-manifest.json
 index.json
 ```
 
-just to fit MOBY shape.
-
 Use adapters.
 
-### 3. The sidecar can evolve, but carefully
+### 3. Sidecar changes are contract changes
 
-Because future apps may ingest this file, changes to the sidecar should be treated as contract changes.
+Additive changes are preferred. Breaking changes should be reflected in `schemaVersion`.
 
-Additive changes are preferred.
+### 4. Unknown fields should become reviewable
 
-Breaking changes should be versioned.
+Unknown mappings should use `needs_review`. Unknown warning codes should preserve code/message and omit inferred field.
 
-### 4. Unknown fields should become reviewable, not fatal
+### 5. Invalid package numbers should be omitted
 
-Unknown mappings should use:
-
-```txt
-needs_review
-```
-
-Unknown warning codes should preserve code/message and omit inferred field.
-
-Invalid package numbers should be omitted, not thrown.
-
-Validation belongs elsewhere.
-
-### 5. Do not put vendor API behavior here
-
-This sidecar is produced from local import artifacts.
-
-It should not call:
-
-```txt
-Metrc
-Korona
-Dutchie
-QuickBooks
-Weedmaps
-Leafly
-```
-
-No raccoon API doors.
+Invalid quantities or money values should not throw from sidecar generation and should not be replaced with invented values.
 
 ---
 
-## Current Verification
+## Current Verification Checkpoint
 
 Known passing checkpoint:
-
-```txt
-npm run build
-npm test
-```
-
-Result:
 
 ```txt
 Test Files  7 passed (7)
 Tests       45 passed (45)
 ```
 
-The tests verify:
+The tests cover:
 
 ```txt
 default behavior when --moby-json is omitted
 sidecar file creation when requested
-mappingProfile exists
-importRun exists
-validationIssues exist
-warnings convert to ValidationIssue
-packages exist
-packages include expected InventoryPackage fields
-package metadata is included
-package externalReferences include normalized row reference
-normal successful-run outputs still exist
+schema metadata
+mappingProfile
+importRun
+validationIssues
+packages
+package cost parsing
+package metadata
+package externalReferences
+normal successful-run outputs
 ```
 
 ---
@@ -551,7 +543,7 @@ normal successful-run outputs still exist
 Potential future consumers:
 
 ```txt
-trackingthc.com dashboard
+trackingthc.com import review
 reconciliation engine
 finance review workflow
 import history viewer
@@ -571,53 +563,4 @@ moby-import.json
 -> reconciliation
 ```
 
-This is the path from file-based import mapper to TrackingTHC platform behavior.
-
----
-
-## Future Useful Slices
-
-### v1.5 option: sidecar schema/version metadata
-
-Potential addition:
-
-```json
-{
-  "schemaVersion": "1.0",
-  "generatedBy": "trackingthc-import-mapper",
-  "generatedAt": "2026-05-10T19:25:43.000Z",
-  "mappingProfile": {},
-  "importRun": {},
-  "validationIssues": [],
-  "packages": []
-}
-```
-
-This would make the sidecar safer for future app ingestion.
-
-### v1.6 option: reconciliation prep
-
-Potential flow:
-
-```txt
-moby-import.json packages
-+ accounting package cost export
--> ReconciliationRun
--> ReconciliationIssue[]
-```
-
-This is where the finance goblins start paying attention.
-
----
-
-## North Star
-
-The MOBY JSON sidecar lets the import mapper remain a practical CLI while also producing a portable ecosystem artifact.
-
-Operators get files they understand.
-
-Future apps get contracts they can ingest.
-
-The raccoons get nothing.
-
-Clipboard goblin approved.
+The sidecar lets the import mapper remain a practical CLI while producing a portable ecosystem artifact.
