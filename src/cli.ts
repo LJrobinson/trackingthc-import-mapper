@@ -2,6 +2,7 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { ExternalSystem, ValidationIssue } from "moby-core";
 
 type CliArgs = {
   csv: string;
@@ -14,8 +15,10 @@ type CliArgs = {
   runDir?: string;
 };
 
+// This remains app-specific: mapper files use snake_case source_system and
+// normalized output column names, not moby-core MappingProfile/CanonicalField.
 type MappingFile = {
-  source_system?: string;
+  source_system?: ExternalSystem;
   fields: Record<string, string>;
 };
 
@@ -34,7 +37,9 @@ type WarningCode =
   | "INVALID_TOTAL_COST"
   | "UNIT_COST_NOT_CALCULATED";
 
-type WarningRow = {
+// Warning CSV rows keep app-specific review columns, while composing the
+// shared ValidationIssue fields that are compatible with moby-core.
+type WarningRow = Pick<ValidationIssue, "rowNumber" | "code" | "message"> & {
   rowNumber: number;
   code: WarningCode;
   message: string;
@@ -62,6 +67,8 @@ type RunCounts = {
   warnings: number;
 };
 
+// This remains app-specific: the persisted index mirrors the CLI output format
+// with snake_case fields and file paths, so it is not a moby-core ImportRun.
 type RunIndexEntry = {
   run_id: string;
   status: "success";
