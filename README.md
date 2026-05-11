@@ -151,6 +151,32 @@ The sidecar is the portable bridge artifact for MOBY-aware consumers such as `tr
 
 ---
 
+## MOBY-compatible output
+
+Use `--run-dir` when you want the normal CLI import outputs saved as a complete MOBY-compatible run. Existing CLI behavior stays intact; explicit run-directory mode adds a run folder with audit files and a MOBY run manifest.
+
+```bash
+npm run import -- --csv samples/korona-export-example.csv --map samples/korona-mapping.json --run-dir output/runs --run-id sample-moby-run-001 --moby-json output/runs/sample-moby-run-001/moby-import.json
+```
+
+Example run output:
+
+```txt
+output/runs/sample-moby-run-001/
+  normalized.csv
+  warnings.csv
+  summary.md
+  run-manifest.json
+  moby-import.json
+  moby-run-manifest.json
+```
+
+`moby-run-manifest.json` describes the run, sources, artifacts, warnings, and summary counts. Committed sample manifests can be displayed by TrackingTHC `/moby-runs`.
+
+`moby-import.json` is an optional import-review sidecar for TrackingTHC `/import-review`; `moby-run-manifest.json` is the run-level manifest that points to the generated artifacts, including the sidecar when requested.
+
+---
+
 ## Core Outputs
 
 ### `normalized.csv`
@@ -489,6 +515,20 @@ run output files -> MobyRunManifest
 
 ---
 
+## Documentation
+
+```txt
+docs/06-module-pattern.md
+docs/moby-bridge.md
+docs/moby-json-sidecar.md
+docs/normalized-fields.md
+docs/progress-log.md
+```
+
+Start with [`docs/06-module-pattern.md`](docs/06-module-pattern.md) for the shared MOBY-compatible module pattern used across the current module repos.
+
+---
+
 ## Scripts
 
 ```bash
@@ -526,6 +566,7 @@ npm run import -- --csv <path> --map <path> --run-dir output/runs --run-id my-ru
 
 ```txt
 docs/
+  06-module-pattern.md
   moby-bridge.md
   moby-json-sidecar.md
   normalized-fields.md
